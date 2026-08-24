@@ -1,22 +1,27 @@
 """
 Task 2: AI Attendance via Camera (Face Recognition)
 
+Two pages:
+- /register  -> type your name, capture your face, saves it as a
+                known face (creates known_faces/<name>.jpg)
+- /          -> check-in page, captures your face and matches it
+                against everyone who has registered
+
 Uses OpenCV's built-in LBPH face recognizer (no dlib needed - easy
 install on Windows). Webcam capture happens in the browser (JS);
-the captured photo is sent here for face detection + recognition.
+captured photos are sent here for face detection + recognition.
 
 Setup:
-    1. Put one clear front-facing photo per person in known_faces/,
-       named after them, e.g. known_faces/sengly.jpg
-    2. pip install opencv-contrib-python flask
-    3. python3 app.py
-    4. Open http://127.0.0.1:8000
+    pip install opencv-contrib-python flask
+    python app.py
+    Open http://127.0.0.1:8000
 
 Attendance is logged to attendance_log.csv (auto-created), one
 entry per person per day (won't log the same person twice in a day).
 """
 
 import os
+import re
 import csv
 import base64
 from datetime import datetime
@@ -44,10 +49,23 @@ def detect_face(gray_img):
         gray_img, scaleFactor=1.1, minNeighbors=5)
     if len(faces) == 0:
         return None
-    # pick the largest face box
     x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
     face = gray_img[y:y + h, x:x + w]
     return cv2.resize(face, FACE_SIZE)
+
+
+def decode_base64_image(data_url):
+    """Convert a browser dataURL (base64 JPEG) into an OpenCV BGR image."""
+    header, encoded = data_url.split(",", 1)
+    img_bytes = base64.b64decode(encoded)
+    np_arr = np.frombuffer(img_bytes, np.uint8)
+    return cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+
+def safe_filename(name):
+    """Turn a display name into a safe filename (letters, numbers, _ , -)."""
+    name = name.strip().lower().replace(" ", "_")
+    return re.sub(r"[^a-z0-9_\-]", "", name)
 
 
 def train_from_known_faces():
@@ -81,7 +99,7 @@ def train_from_known_faces():
         print(
             f"Trained on {len(faces)} known face(s): {list(label_to_name.values())}")
     else:
-        print("No known faces trained yet. Add photos to known_faces/ and restart.")
+        print("No known faces yet. Register someone at /register to get started.")
 
     return len(faces)
 
@@ -108,7 +126,46 @@ def log_attendance(name):
 
 @app.route("/")
 def index():
-    return render_template("index.html", known_count=len(label_to_name))
+    return render_template("index.html", known_count=len(label_to_name),
+                           known_names=list(label_to_name.values()))
+
+
+@app.route("/register")
+def register_page():
+    return render_template("register.html")
+
+
+@app.route("/register", methods=["POST"])
+def register_submit():
+    name = request.json.get("name", "").strip()
+    data = request.json.get("image", "")
+
+    if not name:
+        return jsonify({"status": "error", "message": "Please enter your name."})
+    if not data.startswith("data:image"):
+        return jsonify({"status": "error", "message": "No image received."})
+
+    filename = safe_filename(name)
+    if not filename:
+        return jsonify({"status": "error", "message": "Please use a valid name (letters/numbers)."})
+
+    frame = decode_base64_image(data)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    face = detect_face(gray)
+
+    if face is None:
+        return jsonify({"status": "no_face", "message": "No face detected. Face the camera and try again."})
+
+    # Save the ORIGINAL color frame (not just the cropped face) as the
+    # reference photo - training re-detects the face from it each time.
+    save_path = os.path.join(KNOWN_FACES_DIR, f"{filename}.jpg")
+    cv2.imwrite(save_path, frame)
+
+    trained_count = train_from_known_faces()  # retrain including the new face
+
+    return jsonify({"status": "registered", "name": name,
+                    "message": f"Registered {name} successfully!",
+                    "total_known": trained_count})
 
 
 @app.route("/check_in", methods=["POST"])
@@ -119,13 +176,9 @@ def check_in():
 
     if not label_to_name:
         return jsonify({"status": "error",
-                        "message": "No known faces trained. Add photos to known_faces/ and restart the server."})
+                        "message": "No one is registered yet. Go to the Register page first."})
 
-    # Decode base64 image from the browser
-    header, encoded = data.split(",", 1)
-    img_bytes = base64.b64decode(encoded)
-    np_arr = np.frombuffer(img_bytes, np.uint8)
-    frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    frame = decode_base64_image(data)
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     face = detect_face(gray)
@@ -145,7 +198,7 @@ def check_in():
                         "confidence": confidence_pct, "logged": logged, "message": msg})
     else:
         return jsonify({"status": "unknown",
-                        "message": "Face not recognized. Are you in known_faces/?"})
+                        "message": "Face not recognized. Please register first."})
 
 
 if __name__ == "__main__":

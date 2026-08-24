@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>AI Attendance - Check In</title>
+    <title>AI Attendance - Register</title>
     <style>
       body {
         font-family: Arial, sans-serif;
@@ -20,7 +20,7 @@
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
       }
       h1 {
-        color: #2c7a4b;
+        color: #2563a8;
       }
       video,
       canvas {
@@ -32,18 +32,26 @@
       video {
         transform: scaleX(-1);
       }
+      input[type="text"] {
+        width: 90%;
+        padding: 10px 12px;
+        font-size: 15px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        margin-bottom: 15px;
+      }
       button {
-        background: #2c7a4b;
+        background: #2563a8;
         color: white;
         border: none;
         padding: 12px 28px;
         border-radius: 6px;
         cursor: pointer;
         font-size: 16px;
-        margin-top: 15px;
+        margin-top: 10px;
       }
       button:hover {
-        background: #22613a;
+        background: #1d4f88;
       }
       #result {
         margin-top: 20px;
@@ -54,8 +62,8 @@
         display: none;
       }
       .ok {
-        background: #e8f7ee;
-        color: #2c7a4b;
+        background: #e8f0fb;
+        color: #2563a8;
       }
       .warn {
         background: #fdf2e0;
@@ -65,16 +73,11 @@
         background: #fdf2f0;
         color: #c0392b;
       }
-      .note {
-        color: #888;
-        font-size: 13px;
-        margin-top: 10px;
-      }
       .nav {
         margin-bottom: 15px;
       }
       .nav a {
-        color: #2c7a4b;
+        color: #2563a8;
         text-decoration: none;
         font-weight: bold;
       }
@@ -85,30 +88,26 @@
   </head>
   <body>
     <div class="container">
-      <div class="nav"><a href="/register">+ Register a new face</a></div>
-      <h1>AI Attendance Check-In</h1>
-      <p>
-        Registered people: <strong>{{ known_count }}</strong> {% if known_names
-        %}({{ known_names|join(', ') }}){% endif %}
-      </p>
+      <div class="nav"><a href="/">&larr; Back to Check-In</a></div>
+      <h1>Register Your Face</h1>
+      <p>Enter your name, look at the camera, and click Register.</p>
+
+      <input type="text" id="nameInput" placeholder="Your full name" />
 
       <video id="video" autoplay playsinline></video>
       <canvas id="canvas" style="display: none"></canvas>
 
       <br />
-      <button onclick="checkIn()">Check In</button>
+      <button onclick="registerFace()">Register</button>
 
       <div id="result"></div>
-      <p class="note">
-        Face is only used locally to detect and match - nothing is sent anywhere
-        outside this app.
-      </p>
     </div>
 
     <script>
       const video = document.getElementById("video");
       const canvas = document.getElementById("canvas");
       const resultBox = document.getElementById("result");
+      const nameInput = document.getElementById("nameInput");
 
       navigator.mediaDevices
         .getUserMedia({ video: true })
@@ -121,7 +120,15 @@
           resultBox.innerText = "Could not access webcam: " + err.message;
         });
 
-      function checkIn() {
+      function registerFace() {
+        const name = nameInput.value.trim();
+        if (!name) {
+          resultBox.style.display = "block";
+          resultBox.className = "bad";
+          resultBox.innerText = "Please enter your name first.";
+          return;
+        }
+
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         canvas.getContext("2d").drawImage(video, 0, 0);
@@ -129,22 +136,20 @@
 
         resultBox.style.display = "block";
         resultBox.className = "warn";
-        resultBox.innerText = "Checking...";
+        resultBox.innerText = "Registering...";
 
-        fetch("/check_in", {
+        fetch("/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: imageData }),
+          body: JSON.stringify({ name: name, image: imageData }),
         })
           .then((res) => res.json())
           .then((data) => {
             resultBox.style.display = "block";
-            if (data.status === "recognized") {
+            if (data.status === "registered") {
               resultBox.className = "ok";
-              resultBox.innerText = `${data.message} (confidence: ${data.confidence}%)`;
-            } else if (data.status === "unknown" || data.status === "no_face") {
-              resultBox.className = "warn";
-              resultBox.innerText = data.message;
+              resultBox.innerText =
+                data.message + " You can now check in on the main page.";
             } else {
               resultBox.className = "bad";
               resultBox.innerText = data.message;
