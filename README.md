@@ -1,4 +1,4 @@
-# AI Attendance via Camera (Task 2)
+# AI Attendance via Camera
 
 A web app that checks people in using face recognition via webcam.
 
