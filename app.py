@@ -187,7 +187,7 @@ def check_in():
 
     label, distance = recognizer.predict(face)
     # LBPH: lower distance = better match. ~<70 is usually a decent match.
-    CONFIDENCE_THRESHOLD = 70
+    CONFIDENCE_THRESHOLD = 50
 
     if distance < CONFIDENCE_THRESHOLD:
         name = label_to_name[label]
