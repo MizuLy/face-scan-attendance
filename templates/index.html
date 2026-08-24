@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>AI Attendance</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f4f4f7;
+        margin: 0;
+        padding: 40px;
+        text-align: center;
+      }
+      .container {
+        max-width: 500px;
+        margin: 0 auto;
+        background: white;
+        padding: 30px 40px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+      }
+      h1 {
+        color: #2c7a4b;
+      }
+      video,
+      canvas {
+        border-radius: 8px;
+        width: 100%;
+        max-width: 400px;
+        background: #000;
+      }
+      video {
+        transform: scaleX(-1);
+      }
+      button {
+        background: #2c7a4b;
+        color: white;
+        border: none;
+        padding: 12px 28px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 16px;
+        margin-top: 15px;
+      }
+      button:hover {
+        background: #22613a;
+      }
+      #result {
+        margin-top: 20px;
+        padding: 14px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: bold;
+        display: none;
+      }
+      .ok {
+        background: #e8f7ee;
+        color: #2c7a4b;
+      }
+      .warn {
+        background: #fdf2e0;
+        color: #a06a10;
+      }
+      .bad {
+        background: #fdf2f0;
+        color: #c0392b;
+      }
+      .note {
+        color: #888;
+        font-size: 13px;
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>AI Attendance Check-In</h1>
+      <p>Known faces loaded: <strong>{{ known_count }}</strong></p>
+
+      <video id="video" autoplay playsinline></video>
+      <canvas id="canvas" style="display: none"></canvas>
+
+      <br />
+      <button onclick="checkIn()">Check In</button>
+
+      <div id="result"></div>
+      <p class="note">
+        Face is only used locally to detect and match — nothing is sent anywhere
+        outside this app.
+      </p>
+    </div>
+
+    <script>
+      const video = document.getElementById("video");
+      const canvas = document.getElementById("canvas");
+      const resultBox = document.getElementById("result");
+
+      // Start webcam
+      navigator.mediaDevices
+        .getUserMedia({ video: true })
+        .then((stream) => {
+          video.srcObject = stream;
+        })
+        .catch((err) => {
+          resultBox.style.display = "block";
+          resultBox.className = "bad";
+          resultBox.innerText = "Could not access webcam: " + err.message;
+        });
+
+      function checkIn() {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext("2d").drawImage(video, 0, 0);
+        const imageData = canvas.toDataURL("image/jpeg");
+
+        resultBox.style.display = "block";
+        resultBox.className = "warn";
+        resultBox.innerText = "Checking...";
+
+        fetch("/check_in", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: imageData }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            resultBox.style.display = "block";
+            if (data.status === "recognized") {
+              resultBox.className = "ok";
+              resultBox.innerText = `${data.message} (confidence: ${data.confidence}%)`;
+            } else if (data.status === "unknown" || data.status === "no_face") {
+              resultBox.className = "warn";
+              resultBox.innerText = data.message;
+            } else {
+              resultBox.className = "bad";
+              resultBox.innerText = data.message;
+            }
+          })
+          .catch((err) => {
+            resultBox.className = "bad";
+            resultBox.innerText = "Error: " + err.message;
+          });
+      }
+    </script>
+  </body>
+</html>
