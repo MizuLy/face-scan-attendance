@@ -1,0 +1,4 @@
+attendance_log.csv
+
+known_faces/*
+!known_faces/.gitkeep
